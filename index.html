@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="et">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ilmajaam</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    h1 { font-size: 1.5rem; color: #94a3b8; margin-bottom: 0.25rem; }
+    #location { font-size: 2rem; font-weight: bold; margin-bottom: 2rem; }
+    #status { color: #64748b; margin-bottom: 1rem; }
+    .card {
+      background: #1e293b;
+      border-radius: 1rem;
+      padding: 1.5rem 2rem;
+      width: 100%;
+      max-width: 480px;
+      margin-bottom: 1.5rem;
+    }
+    .main-temp {
+      font-size: 5rem;
+      font-weight: 300;
+      line-height: 1;
+    }
+    .desc {
+      font-size: 1.25rem;
+      color: #94a3b8;
+      margin: 0.5rem 0 1.5rem;
+    }
+    .feels { color: #64748b; margin-bottom: 1rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1rem;
+    }
+    .stat label { font-size: 0.75rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+    .stat span { display: block; font-size: 1.1rem; font-weight: 500; }
+    h2 { font-size: 0.9rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 1rem; }
+    .hour-row {
+      display: flex;
+      align-items: center;
+      padding: 0.5rem 0;
+      border-bottom: 1px solid #0f172a;
+      gap: 1rem;
+    }
+    .hour-row:last-child { border-bottom: none; }
+    .hour-time { width: 3rem; color: #64748b; font-size: 0.9rem; }
+    .hour-temp { width: 3.5rem; font-weight: 600; }
+    .hour-desc { flex: 1; color: #94a3b8; font-size: 0.9rem; }
+    .hour-rain { color: #38bdf8; font-size: 0.85rem; }
+    #updated { color: #334155; font-size: 0.75rem; margin-top: 1rem; }
+    .refresh-btn {
+      background: #1e293b;
+      border: 1px solid #334155;
+      color: #94a3b8;
+      padding: 0.4rem 1rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      font-size: 0.85rem;
+      margin-top: 0.5rem;
+    }
+    .refresh-btn:hover { background: #334155; }
+  </style>
+</head>
+<body>
+  <h1>Ilmajaam</h1>
+  <div id="location">...</div>
+  <div id="status">Tuvastame asukohta...</div>
+
+  <div class="card" id="current-card" style="display:none">
+    <div class="main-temp"><span id="temp">--</span>°</div>
+    <div class="desc" id="desc"></div>
+    <div class="feels" id="feels"></div>
+    <div class="grid">
+      <div class="stat"><label>Niiskus</label><span id="humidity"></span></div>
+      <div class="stat"><label>Tuul</label><span id="wind"></span></div>
+      <div class="stat"><label>Pilvisus</label><span id="clouds"></span></div>
+      <div class="stat"><label>Sademed</label><span id="precip"></span></div>
+    </div>
+  </div>
+
+  <div class="card" id="hourly-card" style="display:none">
+    <h2>Tunniprognoosid</h2>
+    <div id="hourly"></div>
+  </div>
+
+  <div id="updated"></div>
+  <button class="refresh-btn" onclick="load()">Uuenda</button>
+
+  <script>
+    const WMO = {
+      0:"Selge taevas",1:"Peamiselt selge",2:"Osaliselt pilves",3:"Pilves",
+      45:"Udu",48:"Härmatis",
+      51:"Kerge uduvihm",53:"Mõõdukas uduvihm",55:"Tihe uduvihm",
+      61:"Kerge vihm",63:"Mõõdukas vihm",65:"Tugev vihm",
+      71:"Kerge lumesadu",73:"Mõõdukas lumesadu",75:"Tugev lumesadu",
+      77:"Lumetera",80:"Kerge hoovihm",81:"Mõõdukas hoovihm",82:"Tugev hoovihm",
+      85:"Kerge lumehoog",86:"Tugev lumehoog",
+      95:"Äike",96:"Äike rahehooga",99:"Äike tugeva rahega"
+    };
+
+    function windDir(deg) {
+      return ["P","KP","K","LK","L","LL","LA","PA"][Math.round(deg/45)%8];
+    }
+
+    async function load() {
+      document.getElementById("status").textContent = "Tuvastame asukohta...";
+      try {
+        const loc = await fetch("https://ipapi.co/json/").then(r=>r.json());
+        const {latitude:lat, longitude:lon, city, country_name} = loc;
+        document.getElementById("location").textContent = `${city}, ${country_name}`;
+        document.getElementById("status").textContent = "Laen ilmaandmeid...";
+
+        const params = new URLSearchParams({
+          latitude: lat, longitude: lon,
+          current: "temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,wind_direction_10m,weather_code,precipitation,cloud_cover",
+          hourly: "temperature_2m,weather_code,precipitation_probability",
+          forecast_days: 1,
+          timezone: "auto"
+        });
+        const data = await fetch(`https://api.open-meteo.com/v1/forecast?${params}`).then(r=>r.json());
+        const c = data.current;
+
+        document.getElementById("temp").textContent = Math.round(c.temperature_2m);
+        document.getElementById("desc").textContent = WMO[c.weather_code] ?? "Teadmata";
+        document.getElementById("feels").textContent = `Tundub nagu ${Math.round(c.apparent_temperature)}°C`;
+        document.getElementById("humidity").textContent = c.relative_humidity_2m + "%";
+        document.getElementById("wind").textContent = `${Math.round(c.wind_speed_10m)} km/h ${windDir(c.wind_direction_10m)}`;
+        document.getElementById("clouds").textContent = c.cloud_cover + "%";
+        document.getElementById("precip").textContent = c.precipitation > 0 ? c.precipitation + " mm" : "0 mm";
+
+        // Tunniprognoosid
+        const nowH = new Date().getHours();
+        const h = data.hourly;
+        const rows = [];
+        for (let i = 0; i < h.time.length; i++) {
+          const hour = parseInt(h.time[i].slice(11,13));
+          if (hour < nowH) continue;
+          const prob = h.precipitation_probability[i];
+          rows.push(`
+            <div class="hour-row">
+              <span class="hour-time">${h.time[i].slice(11,16)}</span>
+              <span class="hour-temp">${Math.round(h.temperature_2m[i])}°</span>
+              <span class="hour-desc">${WMO[h.weather_code[i]] ?? ""}</span>
+              ${prob > 0 ? `<span class="hour-rain">💧${prob}%</span>` : ""}
+            </div>`);
+        }
+        document.getElementById("hourly").innerHTML = rows.join("");
+
+        document.getElementById("current-card").style.display = "";
+        document.getElementById("hourly-card").style.display = "";
+        document.getElementById("status").textContent = "";
+        document.getElementById("updated").textContent = "Uuendatud: " + new Date().toLocaleTimeString("et-EE");
+      } catch(e) {
+        document.getElementById("status").textContent = "Viga: " + e.message;
+      }
+    }
+
+    load();
+    setInterval(load, 5 * 60 * 1000); // auto-uuendus iga 5 min
+  </script>
+</body>
+</html>
